@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🎈 Happy Birthday! 🎈</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #0a0010;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        #renderCanvas {
+            width: 100vw;
+            height: 100vh;
+            touch-action: none;
+        }
+
+        #ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 28px;
+            z-index: 10;
+        }
+
+        #title {
+            font-size: clamp(2rem, 5vw, 3.6rem);
+            font-weight: 900;
+            letter-spacing: .12em;
+            background: linear-gradient(90deg, #ff6ec7, #ffe66d, #6efff4, #b06eff, #ff6ec7);
+            background-size: 300% 100%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: shimmer 4s linear infinite;
+            filter: drop-shadow(0 0 18px rgba(255, 110, 199, .7));
+        }
+
+        #subtitle {
+            margin-top: 10px;
+            font-size: clamp(1rem, 2.5vw, 1.35rem);
+            color: rgba(255, 255, 255, .75);
+            letter-spacing: .2em;
+            text-transform: uppercase;
+        }
+
+        #hint {
+            position: fixed;
+            bottom: 22px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, .4);
+            font-size: .82rem;
+            letter-spacing: .1em;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        @keyframes shimmer {
+            0% {
+                background-position: 0% 50%;
+            }
+
+            100% {
+                background-position: 300% 50%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="renderCanvas"></canvas>
+    <div id="ui">
+        <div id="title">🎂 Happy Birthday! 🎂</div>
+        <div id="subtitle">Congratulations ✨</div>
+    </div>
+    <div id="hint">🖱️ ドラッグ：視点回転　ホイール：ズーム　右ドラッグ：パン</div>
+
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+
+    <script>
+        (function () {
+            const canvas = document.getElementById('renderCanvas');
+            const engine = new BABYLON.Engine(canvas, true);
+
+            const BALLOON_COLORS = [
+                new BABYLON.Color3(0 / 255, 255 / 255, 255 / 255), // シアン   #00FFFF
+                new BABYLON.Color3(255 / 255, 0 / 255, 255 / 255), // マゼンタ #FF00FF
+                new BABYLON.Color3(255 / 255, 255 / 255, 0 / 255),   // イエロー #FFFF00
+                new BABYLON.Color3(0 / 255, 255 / 255, 0 / 255),   // グリーン #00FF00
+                new BABYLON.Color3(128 / 255, 128 / 255, 128 / 255), // グレー   #808080
+            ];
+
+            const NUM_BALLOONS = 8;
+            const RING_RADIUS = 5.5;
+            const RISE_SPEED = 0.008;
+            const ORBIT_SPEED = 0.004;
+            const RESET_HEIGHT = 18;
+            const BASE_Y = -4;
+
+            const createScene = () => {
+                const scene = new BABYLON.Scene(engine);
+                scene.clearColor = new BABYLON.Color4(0.04, 0.0, 0.08, 1);
+
+                // カメラ（マウスで視点操作）
+                const cam = new BABYLON.ArcRotateCamera(
+                    'cam', -Math.PI / 2, Math.PI / 3.2, 18,
+                    new BABYLON.Vector3(0, 4, 0), scene
+                );
+                cam.lowerRadiusLimit = 6;
+                cam.upperRadiusLimit = 40;
+                cam.lowerBetaLimit = 0.1;
+                cam.upperBetaLimit = Math.PI / 2 + 0.3;
+                cam.wheelDeltaPercentage = 0.02;
+                cam.attachControl(canvas, true);
+
+                // ライト
+                const hemi = new BABYLON.HemisphericLight('hemi', new BABYLON.Vector3(0, 1, 0), scene);
+                hemi.intensity = 0.5;
+                hemi.groundColor = new BABYLON.Color3(0.2, 0.0, 0.3);
+
+                const point = new BABYLON.PointLight('pt', new BABYLON.Vector3(0, 8, 0), scene);
+                point.intensity = 1.2;
+                point.diffuse = new BABYLON.Color3(1, 0.9, 1);
+
+                // グロー
+                const glow = new BABYLON.GlowLayer('glow', scene);
+                glow.intensity = 0.6;
+
+                // 星パーティクル
+                createStars(scene);
+
+                // バルーン生成
+                const balloons = [];
+                for (let i = 0; i < NUM_BALLOONS; i++) {
+                    const angleOffset = (2 * Math.PI / NUM_BALLOONS) * i;
+                    const yOffset = (RESET_HEIGHT / NUM_BALLOONS) * i;
+                    const color = BALLOON_COLORS[i % BALLOON_COLORS.length];
+                    const mesh = createBalloon(scene, color, i);
+                    balloons.push({ mesh, angle: angleOffset, y: BASE_Y + yOffset });
+                }
+
+                // 毎フレーム更新
+                let tick = 0;
+                scene.onBeforeRenderObservable.add(() => {
+                    tick++;
+                    balloons.forEach((b, i) => {
+                        b.angle += ORBIT_SPEED;
+                        b.y += RISE_SPEED;
+                        if (b.y > RESET_HEIGHT) b.y = BASE_Y;
+
+                        const x = Math.cos(b.angle) * RING_RADIUS;
+                        const z = Math.sin(b.angle) * RING_RADIUS;
+                        const localWobble = Math.sin(tick * 0.04 + i * 0.8) * 0.12;
+                        b.mesh.position.set(x, b.y + localWobble, z);
+                        b.mesh.rotation.y += 0.01;
+                    });
+                });
+
+                return scene;
+            };
+
+            function createBalloon(scene, color, index) {
+                const root = new BABYLON.TransformNode('balloon_root_' + index, scene);
+
+                // 本体（縦長の球）
+                const body = BABYLON.MeshBuilder.CreateSphere('balloon_body_' + index, {
+                    segments: 14, diameterX: 1.4, diameterY: 1.8, diameterZ: 1.4
+                }, scene);
+                const mat = new BABYLON.StandardMaterial('bmat_' + index, scene);
+                mat.diffuseColor = color;
+                mat.specularColor = new BABYLON.Color3(1, 1, 1);
+                mat.specularPower = 64;
+                mat.emissiveColor = color.scale(0.18);
+                body.material = mat;
+
+                // 結び目
+                const knot = BABYLON.MeshBuilder.CreateSphere('knot_' + index, { diameter: 0.15 }, scene);
+                const kmat = new BABYLON.StandardMaterial('kmat_' + index, scene);
+                kmat.diffuseColor = color.scale(0.6);
+                knot.material = kmat;
+                knot.position.y = -0.92;
+
+                // 糸
+                const str = BABYLON.MeshBuilder.CreateCylinder('str_' + index, {
+                    height: 1.8, diameter: 0.03, tessellation: 6
+                }, scene);
+                const smat = new BABYLON.StandardMaterial('smat_' + index, scene);
+                smat.diffuseColor = new BABYLON.Color3(1, 1, 1);
+                smat.alpha = 0.6;
+                str.material = smat;
+                str.position.y = -1.82;
+
+                // ハイライト
+                const shine = BABYLON.MeshBuilder.CreateSphere('shine_' + index, { diameter: 0.32, segments: 6 }, scene);
+                const shmat = new BABYLON.StandardMaterial('shmat_' + index, scene);
+                shmat.emissiveColor = new BABYLON.Color3(0.9, 0.9, 1);
+                shmat.alpha = 0.5;
+                shine.material = shmat;
+                shine.position.set(0.38, 0.55, 0.3);
+
+                body.parent = root;
+                knot.parent = root;
+                str.parent = root;
+                shine.parent = root;
+                return root;
+            }
+
+            function createStars(scene) {
+                const ps = new BABYLON.ParticleSystem('stars', 800, scene);
+                ps.particleTexture = new BABYLON.Texture(
+                    'https://assets.babylonjs.com/textures/flare.png', scene
+                );
+                ps.emitter = new BABYLON.Vector3(0, 5, 0);
+                ps.minEmitBox = new BABYLON.Vector3(-30, -15, -30);
+                ps.maxEmitBox = new BABYLON.Vector3(30, 30, 30);
+                ps.color1 = new BABYLON.Color4(1, 0.9, 1, 0.8);
+                ps.color2 = new BABYLON.Color4(0.7, 0.5, 1, 0.5);
+                ps.colorDead = new BABYLON.Color4(0, 0, 0, 0);
+                ps.minSize = 0.05; ps.maxSize = 0.18;
+                ps.minLifeTime = 8; ps.maxLifeTime = 16;
+                ps.emitRate = 60;
+                ps.direction1 = ps.direction2 = new BABYLON.Vector3(0, 0, 0);
+                ps.gravity = new BABYLON.Vector3(0, 0, 0);
+                ps.minEmitPower = ps.maxEmitPower = 0;
+                ps.updateSpeed = 0.015;
+                ps.start();
+            }
+
+            const scene = createScene();
+            engine.runRenderLoop(() => scene.render());
+            window.addEventListener('resize', () => engine.resize());
+        })();
+    </script>
+</body>
+
+</html>
