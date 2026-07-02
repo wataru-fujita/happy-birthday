@@ -6,7 +6,6 @@
 
 🔗 **[https://wataru-fujita.github.io/happy-birthday/](https://wataru-fujita.github.io/happy-birthday/)**
 
-> ※ リポジトリ名が異なる場合は上記URLの `happy-birthday` 部分を変更してください。
 
 ## 特徴
 
